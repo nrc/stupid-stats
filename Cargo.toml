@@ -1,0 +1,13 @@
+[package]
+
+name = "stupid-stats"
+version = "0.0.1"
+authors = ["Nicholas Cameron <nrc@ncameron.org>"]
+description = "example compiler tool which produces some not very useful stats"
+repository = "https://github.com/nick29581/stupid-stats"
+readme = "README.md"
+license = "Apache-2.0/MIT"
+
+[[bin]]
+name = "stupid"
+path = "src/mod.rs"
