@@ -1,6 +1,4 @@
-// Copyright 2015 The Rust Project Developers. See the COPYRIGHT
-// file at the top-level directory of this distribution and at
-// http://rust-lang.org/COPYRIGHT.
+// Copyright 2015 Nicholas Cameron.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -11,7 +9,7 @@
 #![feature(box_syntax)]
 #![feature(collections)]
 #![feature(core)]
-#![feature(os)]
+#![feature(env)]
 #![feature(path)]
 #![feature(rustc_private)]
 
@@ -22,7 +20,7 @@ extern crate syntax;
 
 use rustc::session::Session;
 use rustc::session::config::{self, Input};
-use rustc_driver::{driver, CompilerCalls, Compilation};
+use rustc_driver::{driver, CompilerCalls, Compilation, RustcDefaultCalls};
 
 use syntax::{ast, attr, diagnostics, visit};
 use syntax::print::pprust::path_to_string;
@@ -31,7 +29,18 @@ use syntax::print::pprust::path_to_string;
 // This is the highest level controller of compiler execution. We often want
 // some context to remember facts about compilation (e.g., the input file or
 // some processed flags), but for this simple example, we don't need anything.
-struct StupidCalls;
+// We need to delegate to RustcDefaultCalls when we want to do what the rust
+// compiler would do in certain circumstances. We do this so that we can emit
+// some of the same info to Cargo.
+struct StupidCalls {
+    default_calls: RustcDefaultCalls,
+}
+
+impl StupidCalls {
+    fn new() -> StupidCalls {
+        StupidCalls { default_calls: RustcDefaultCalls }
+    }
+}
 
 // CompilerCalls is a trait for controlling compilation at the driver level. It
 // is basically a set of callbacks to call at various stages of compilation to
@@ -46,12 +55,13 @@ impl<'a> CompilerCalls<'a> for StupidCalls {
     }
 
     fn late_callback(&mut self,
-                     _: &getopts::Matches,
-                     _: &Session,
-                     _: &Input,
-                     _: &Option<Path>,
-                     _: &Option<Path>)
+                     m: &getopts::Matches,
+                     s: &Session,
+                     i: &Input,
+                     odir: &Option<Path>,
+                     ofile: &Option<Path>)
                      -> Compilation {
+        self.default_calls.late_callback(m, s, i, odir, ofile);
         Compilation::Continue
     }
 
@@ -60,12 +70,13 @@ impl<'a> CompilerCalls<'a> for StupidCalls {
     }
 
     fn no_input(&mut self,
-                _: &getopts::Matches,
-                _: &config::Options,
-                _: &Option<Path>,
-                _: &Option<Path>,
-                _: &diagnostics::registry::Registry)
+                m: &getopts::Matches,
+                o: &config::Options,
+                odir: &Option<Path>,
+                ofile: &Option<Path>,
+                r: &diagnostics::registry::Registry)
                 -> Option<(Input, Option<Path>)> {
+        self.default_calls.no_input(m, o, odir, ofile, r);
         // This is not optimal error handling.
         panic!("No input supplied to stupid-stats");
     }
@@ -194,7 +205,7 @@ fn main() {
     // Grab the command line arguments.
     let args: Vec<_> = std::env::args().collect();
     // Run the compiler. Yep, that's it.
-    rustc_driver::run_compiler(&args, &mut StupidCalls);
+    rustc_driver::run_compiler(&args, &mut StupidCalls::new());
     // Set the exit status in case a makefile relies on it or something.
-    std::env::set_exit_status(0i32);
+    std::env::set_exit_status(0);
 }
