@@ -7,10 +7,6 @@
 // except according to those terms.
 
 #![feature(box_syntax)]
-#![feature(collections)]
-#![feature(core)]
-#![feature(env)]
-#![feature(path)]
 #![feature(rustc_private)]
 
 extern crate getopts;
@@ -21,9 +17,12 @@ extern crate syntax;
 use rustc::session::Session;
 use rustc::session::config::{self, Input};
 use rustc_driver::{driver, CompilerCalls, Compilation, RustcDefaultCalls};
+use rustc_driver::diagnostic::ColorConfig;
 
 use syntax::{ast, attr, diagnostics, visit};
 use syntax::print::pprust::path_to_string;
+
+use std::path::PathBuf;
 
 
 // This is the highest level controller of compiler execution. We often want
@@ -49,7 +48,8 @@ impl StupidCalls {
 impl<'a> CompilerCalls<'a> for StupidCalls {
     fn early_callback(&mut self,
                       _: &getopts::Matches,
-                      _: &diagnostics::registry::Registry)
+                      _: &diagnostics::registry::Registry,
+                      _: ColorConfig)
                       -> Compilation {
         Compilation::Continue
     }
@@ -58,24 +58,24 @@ impl<'a> CompilerCalls<'a> for StupidCalls {
                      m: &getopts::Matches,
                      s: &Session,
                      i: &Input,
-                     odir: &Option<Path>,
-                     ofile: &Option<Path>)
+                     odir: &Option<PathBuf>,
+                     ofile: &Option<PathBuf>)
                      -> Compilation {
         self.default_calls.late_callback(m, s, i, odir, ofile);
         Compilation::Continue
     }
 
-    fn some_input(&mut self, input: Input, input_path: Option<Path>) -> (Input, Option<Path>) {
+    fn some_input(&mut self, input: Input, input_path: Option<PathBuf>) -> (Input, Option<PathBuf>) {
         (input, input_path)
     }
 
     fn no_input(&mut self,
                 m: &getopts::Matches,
                 o: &config::Options,
-                odir: &Option<Path>,
-                ofile: &Option<Path>,
+                odir: &Option<PathBuf>,
+                ofile: &Option<PathBuf>,
                 r: &diagnostics::registry::Registry)
-                -> Option<(Input, Option<Path>)> {
+                -> Option<(Input, Option<PathBuf>)> {
         self.default_calls.no_input(m, o, odir, ofile, r);
         // This is not optimal error handling.
         panic!("No input supplied to stupid-stats");
@@ -102,9 +102,9 @@ impl<'a> CompilerCalls<'a> for StupidCalls {
             visit::walk_crate(&mut visitor, krate);
 
             // And finally prints out the stupid stats that we collected.
-            let cratename = match attr::find_crate_name(&krate.attrs[]) {
+            let cratename = match attr::find_crate_name(&krate.attrs) {
                 Some(name) => name.to_string(),
-                None => String::from_str("unknown_crate"),
+                None => String::from("unknown_crate"),
             };
             println!("In crate: {},\n", cratename);
             println!("Found {} uses of `println!`;", visitor.println_count);
@@ -175,7 +175,7 @@ impl<'v> visit::Visitor<'v> for StupidVisitor {
     // We found an item, could be a function.
     fn visit_item(&mut self, i: &'v ast::Item) {
         match i.node {
-            ast::Item_::ItemFn(ref decl, _, _, _, _) => {
+            ast::Item_::ItemFn(ref decl, _, _, _, _, _) => {
                 // Record the number of args.
                 self.increment_args(decl.inputs.len());
             }
@@ -189,7 +189,7 @@ impl<'v> visit::Visitor<'v> for StupidVisitor {
     // We found a macro.
     fn visit_mac(&mut self, mac: &'v ast::Mac) {
         // Find its name and check if it is "println".
-        let ast::Mac_::MacInvocTT(ref path, _, _) = mac.node;
+        let path = &mac.node.path;
         if path_to_string(path) == "println" {
             self.println_count += 1;
         }
@@ -206,6 +206,4 @@ fn main() {
     let args: Vec<_> = std::env::args().collect();
     // Run the compiler. Yep, that's it.
     rustc_driver::run_compiler(&args, &mut StupidCalls::new());
-    // Set the exit status in case a makefile relies on it or something.
-    std::env::set_exit_status(0);
 }
