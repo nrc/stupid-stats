@@ -234,8 +234,10 @@ Most of the rest of the impl of `CompilerCalls` is trivial:
 ```
 impl<'a> CompilerCalls<'a> for StupidCalls {
     fn early_callback(&mut self,
-                      _: &getopts::Matches,
-                      _: &diagnostics::registry::Registry)
+                        _: &getopts::Matches,
+                        _: &config::Options,
+                        _: &diagnostics::registry::Registry,
+                        _: ErrorOutputType)
                       -> Compilation {
         Compilation::Continue
     }
