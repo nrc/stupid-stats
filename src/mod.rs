@@ -15,9 +15,8 @@ extern crate rustc_driver;
 extern crate syntax;
 
 use rustc::session::Session;
-use rustc::session::config::{self, Input};
+use rustc::session::config::{self, Input, ErrorOutputType};
 use rustc_driver::{driver, CompilerCalls, Compilation, RustcDefaultCalls};
-use rustc_driver::diagnostic::ColorConfig;
 
 use syntax::{ast, attr, diagnostics, visit};
 use syntax::print::pprust::path_to_string;
@@ -48,8 +47,9 @@ impl StupidCalls {
 impl<'a> CompilerCalls<'a> for StupidCalls {
     fn early_callback(&mut self,
                       _: &getopts::Matches,
+                      _: &config::Options,
                       _: &diagnostics::registry::Registry,
-                      _: ColorConfig)
+                      _: ErrorOutputType)
                       -> Compilation {
         Compilation::Continue
     }
@@ -175,7 +175,7 @@ impl<'v> visit::Visitor<'v> for StupidVisitor {
     // We found an item, could be a function.
     fn visit_item(&mut self, i: &'v ast::Item) {
         match i.node {
-            ast::Item_::ItemFn(ref decl, _, _, _, _, _) => {
+            ast::ItemKind::Fn(ref decl, _, _, _, _, _) => {
                 // Record the number of args.
                 self.increment_args(decl.inputs.len());
             }
