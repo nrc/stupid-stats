@@ -18,7 +18,7 @@ use rustc::session::Session;
 use rustc::session::config::{self, Input, ErrorOutputType};
 use rustc_driver::{driver, CompilerCalls, Compilation, RustcDefaultCalls};
 
-use syntax::{ast, attr, diagnostics, visit};
+use syntax::{ast, attr, visit, errors};
 use syntax::print::pprust::path_to_string;
 
 use std::path::PathBuf;
@@ -48,7 +48,7 @@ impl<'a> CompilerCalls<'a> for StupidCalls {
     fn early_callback(&mut self,
                       _: &getopts::Matches,
                       _: &config::Options,
-                      _: &diagnostics::registry::Registry,
+                      _: &errors::registry::Registry,
                       _: ErrorOutputType)
                       -> Compilation {
         Compilation::Continue
@@ -74,7 +74,7 @@ impl<'a> CompilerCalls<'a> for StupidCalls {
                 o: &config::Options,
                 odir: &Option<PathBuf>,
                 ofile: &Option<PathBuf>,
-                r: &diagnostics::registry::Registry)
+                r: &errors::registry::Registry)
                 -> Option<(Input, Option<PathBuf>)> {
         self.default_calls.no_input(m, o, odir, ofile, r);
         // This is not optimal error handling.
@@ -85,7 +85,7 @@ impl<'a> CompilerCalls<'a> for StupidCalls {
     // us to supply a CompileController, a struct which gives fine grain control
     // over the phases of compilation and gives us an opportunity to hook into
     // compilation with callbacks.
-    fn build_controller(&mut self, _: &Session) -> driver::CompileController<'a> {
+    fn build_controller(&mut self, _: &Session,  _: &getopts::Matches) -> driver::CompileController<'a> {
         // We mostly want to do what rustc does, which is what basic() will return.
         let mut control = driver::CompileController::basic();
         // But we only need the AST, so we can stop compilation after parsing.
@@ -93,16 +93,15 @@ impl<'a> CompilerCalls<'a> for StupidCalls {
         // And when we stop after parsing we'll call this closure.
         // Note that this will give us an AST before macro expansions, which is
         // not usually what you want.
-        control.after_parse.callback = box |state| {
+        control.after_parse.callback = box |state: &mut driver::CompileState| {
             // Which extracts information about the compiled crate...
-            let krate = state.krate.unwrap();
-
+            let krate = state.krate.as_ref();
             // ...and walks the AST, collecting stats.
             let mut visitor = StupidVisitor::new();
-            visit::walk_crate(&mut visitor, krate);
+            visit::walk_crate(&mut visitor, &krate.unwrap());
 
             // And finally prints out the stupid stats that we collected.
-            let cratename = match attr::find_crate_name(&krate.attrs) {
+            let cratename = match attr::find_crate_name(&krate.unwrap().attrs) {
                 Some(name) => name.to_string(),
                 None => String::from("unknown_crate"),
             };
@@ -171,9 +170,9 @@ impl StupidVisitor {
 }
 
 // visit::Visitor is the generic trait for walking an AST.
-impl<'v> visit::Visitor<'v> for StupidVisitor {
+impl visit::Visitor for StupidVisitor {
     // We found an item, could be a function.
-    fn visit_item(&mut self, i: &'v ast::Item) {
+    fn visit_item(&mut self, i: & ast::Item) {
         match i.node {
             ast::ItemKind::Fn(ref decl, _, _, _, _, _) => {
                 // Record the number of args.
@@ -187,7 +186,7 @@ impl<'v> visit::Visitor<'v> for StupidVisitor {
     }
 
     // We found a macro.
-    fn visit_mac(&mut self, mac: &'v ast::Mac) {
+    fn visit_mac(&mut self, mac: & ast::Mac) {
         // Find its name and check if it is "println".
         let path = &mac.node.path;
         if path_to_string(path) == "println" {
