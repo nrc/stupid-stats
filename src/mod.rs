@@ -48,6 +48,7 @@ impl<'a> CompilerCalls<'a> for StupidCalls {
     fn early_callback(&mut self,
                       _: &getopts::Matches,
                       _: &config::Options,
+                      _: &ast::CrateConfig,
                       _: &errors::registry::Registry,
                       _: ErrorOutputType)
                       -> Compilation {
@@ -72,11 +73,12 @@ impl<'a> CompilerCalls<'a> for StupidCalls {
     fn no_input(&mut self,
                 m: &getopts::Matches,
                 o: &config::Options,
+                cc: &ast::CrateConfig,
                 odir: &Option<PathBuf>,
                 ofile: &Option<PathBuf>,
                 r: &errors::registry::Registry)
                 -> Option<(Input, Option<PathBuf>)> {
-        self.default_calls.no_input(m, o, odir, ofile, r);
+        self.default_calls.no_input(m, o, cc, odir, ofile, r);
         // This is not optimal error handling.
         panic!("No input supplied to stupid-stats");
     }
@@ -170,7 +172,7 @@ impl StupidVisitor {
 }
 
 // visit::Visitor is the generic trait for walking an AST.
-impl visit::Visitor for StupidVisitor {
+impl<'a> visit::Visitor<'a> for StupidVisitor {
     // We found an item, could be a function.
     fn visit_item(&mut self, i: & ast::Item) {
         match i.node {
@@ -204,5 +206,5 @@ fn main() {
     // Grab the command line arguments.
     let args: Vec<_> = std::env::args().collect();
     // Run the compiler. Yep, that's it.
-    rustc_driver::run_compiler(&args, &mut StupidCalls::new());
+    rustc_driver::run_compiler(&args, &mut StupidCalls::new(), None, None);
 }
