@@ -15,14 +15,13 @@ extern crate rustc_driver;
 extern crate syntax;
 
 use rustc::session::Session;
-use rustc::session::config::{self, Input, ErrorOutputType};
-use rustc_driver::{driver, CompilerCalls, Compilation, RustcDefaultCalls};
+use rustc::session::config::{self, ErrorOutputType, Input};
+use rustc_driver::{driver, Compilation, CompilerCalls, RustcDefaultCalls};
 
-use syntax::{ast, attr, visit, errors};
+use syntax::{ast, attr, errors, visit};
 use syntax::print::pprust::path_to_string;
 
 use std::path::PathBuf;
-
 
 // This is the highest level controller of compiler execution. We often want
 // some context to remember facts about compilation (e.g., the input file or
@@ -36,7 +35,9 @@ struct StupidCalls {
 
 impl StupidCalls {
     fn new() -> StupidCalls {
-        StupidCalls { default_calls: RustcDefaultCalls }
+        StupidCalls {
+            default_calls: RustcDefaultCalls,
+        }
     }
 }
 
@@ -45,39 +46,46 @@ impl StupidCalls {
 // execute custom actions or influence compilation. We are mostly just going to
 // do nothing and let compilation continue.
 impl<'a> CompilerCalls<'a> for StupidCalls {
-    fn early_callback(&mut self,
-                      _: &getopts::Matches,
-                      _: &config::Options,
-                      _: &ast::CrateConfig,
-                      _: &errors::registry::Registry,
-                      _: ErrorOutputType)
-                      -> Compilation {
+    fn early_callback(
+        &mut self,
+        _: &getopts::Matches,
+        _: &config::Options,
+        _: &ast::CrateConfig,
+        _: &errors::registry::Registry,
+        _: ErrorOutputType,
+    ) -> Compilation {
         Compilation::Continue
     }
 
-    fn late_callback(&mut self,
-                     m: &getopts::Matches,
-                     s: &Session,
-                     i: &Input,
-                     odir: &Option<PathBuf>,
-                     ofile: &Option<PathBuf>)
-                     -> Compilation {
+    fn late_callback(
+        &mut self,
+        m: &getopts::Matches,
+        s: &Session,
+        i: &Input,
+        odir: &Option<PathBuf>,
+        ofile: &Option<PathBuf>,
+    ) -> Compilation {
         self.default_calls.late_callback(m, s, i, odir, ofile);
         Compilation::Continue
     }
 
-    fn some_input(&mut self, input: Input, input_path: Option<PathBuf>) -> (Input, Option<PathBuf>) {
+    fn some_input(
+        &mut self,
+        input: Input,
+        input_path: Option<PathBuf>,
+    ) -> (Input, Option<PathBuf>) {
         (input, input_path)
     }
 
-    fn no_input(&mut self,
-                m: &getopts::Matches,
-                o: &config::Options,
-                cc: &ast::CrateConfig,
-                odir: &Option<PathBuf>,
-                ofile: &Option<PathBuf>,
-                r: &errors::registry::Registry)
-                -> Option<(Input, Option<PathBuf>)> {
+    fn no_input(
+        &mut self,
+        m: &getopts::Matches,
+        o: &config::Options,
+        cc: &ast::CrateConfig,
+        odir: &Option<PathBuf>,
+        ofile: &Option<PathBuf>,
+        r: &errors::registry::Registry,
+    ) -> Option<(Input, Option<PathBuf>)> {
         self.default_calls.no_input(m, o, cc, odir, ofile, r);
         // This is not optimal error handling.
         panic!("No input supplied to stupid-stats");
@@ -87,7 +95,11 @@ impl<'a> CompilerCalls<'a> for StupidCalls {
     // us to supply a CompileController, a struct which gives fine grain control
     // over the phases of compilation and gives us an opportunity to hook into
     // compilation with callbacks.
-    fn build_controller(&mut self, _: &Session,  _: &getopts::Matches) -> driver::CompileController<'a> {
+    fn build_controller(
+        &mut self,
+        _: &Session,
+        _: &getopts::Matches,
+    ) -> driver::CompileController<'a> {
         // We mostly want to do what rustc does, which is what basic() will return.
         let mut control = driver::CompileController::basic();
         // But we only need the AST, so we can stop compilation after parsing.
@@ -111,9 +123,14 @@ impl<'a> CompilerCalls<'a> for StupidCalls {
             println!("Found {} uses of `println!`;", visitor.println_count);
 
             let (common, common_percent, four_percent) = visitor.compute_arg_stats();
-            println!("The most common number of arguments is {} ({:.0}% of all functions);",
-                     common, common_percent);
-            println!("{:.0}% of functions have four or more arguments.", four_percent);
+            println!(
+                "The most common number of arguments is {} ({:.0}% of all functions);",
+                common, common_percent
+            );
+            println!(
+                "{:.0}% of functions have four or more arguments.",
+                four_percent
+            );
         };
 
         control
@@ -159,7 +176,11 @@ impl StupidVisitor {
         let common = common as f64;
         let four_or_more = four_or_more as f64;
         let total = total as f64;
-        (common_index, 100.0 * common / total, 100.0 * four_or_more / total)
+        (
+            common_index,
+            100.0 * common / total,
+            100.0 * four_or_more / total,
+        )
     }
 
     fn increment_args(&mut self, args: usize) {
@@ -174,7 +195,7 @@ impl StupidVisitor {
 // visit::Visitor is the generic trait for walking an AST.
 impl<'a> visit::Visitor<'a> for StupidVisitor {
     // We found an item, could be a function.
-    fn visit_item(&mut self, i: & ast::Item) {
+    fn visit_item(&mut self, i: &ast::Item) {
         match i.node {
             ast::ItemKind::Fn(ref decl, _, _, _, _, _) => {
                 // Record the number of args.
@@ -188,7 +209,7 @@ impl<'a> visit::Visitor<'a> for StupidVisitor {
     }
 
     // We found a macro.
-    fn visit_mac(&mut self, mac: & ast::Mac) {
+    fn visit_mac(&mut self, mac: &ast::Mac) {
         // Find its name and check if it is "println".
         let path = &mac.node.path;
         if path_to_string(path) == "println" {
