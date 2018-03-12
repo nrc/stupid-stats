@@ -12,11 +12,14 @@
 extern crate getopts;
 extern crate rustc;
 extern crate rustc_driver;
+extern crate rustc_trans_utils;
 extern crate syntax;
 
+use rustc::middle::cstore::CrateStore;
 use rustc::session::Session;
 use rustc::session::config::{self, ErrorOutputType, Input};
 use rustc_driver::{driver, Compilation, CompilerCalls, RustcDefaultCalls};
+use rustc_trans_utils::trans_crate::TransCrate;
 
 use syntax::{ast, attr, errors, visit};
 use syntax::print::pprust::path_to_string;
@@ -59,13 +62,15 @@ impl<'a> CompilerCalls<'a> for StupidCalls {
 
     fn late_callback(
         &mut self,
+        t: &TransCrate,
         m: &getopts::Matches,
         s: &Session,
+        c: &CrateStore,
         i: &Input,
         odir: &Option<PathBuf>,
         ofile: &Option<PathBuf>,
     ) -> Compilation {
-        self.default_calls.late_callback(m, s, i, odir, ofile);
+        self.default_calls.late_callback(t, m, s, c, i, odir, ofile);
         Compilation::Continue
     }
 
