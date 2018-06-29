@@ -101,7 +101,7 @@ impl<'a> CompilerCalls<'a> for StupidCalls {
     // over the phases of compilation and gives us an opportunity to hook into
     // compilation with callbacks.
     fn build_controller(
-        &mut self,
+        self: Box<Self>,
         _: &Session,
         _: &getopts::Matches,
     ) -> driver::CompileController<'a> {
@@ -202,7 +202,7 @@ impl<'a> visit::Visitor<'a> for StupidVisitor {
     // We found an item, could be a function.
     fn visit_item(&mut self, i: &ast::Item) {
         match i.node {
-            ast::ItemKind::Fn(ref decl, _, _, _, _, _) => {
+            ast::ItemKind::Fn(ref decl, _, _, _) => {
                 // Record the number of args.
                 self.increment_args(decl.inputs.len());
             }
@@ -232,5 +232,5 @@ fn main() {
     // Grab the command line arguments.
     let args: Vec<_> = std::env::args().collect();
     // Run the compiler. Yep, that's it.
-    rustc_driver::run_compiler(&args, &mut StupidCalls::new(), None, None);
+    rustc_driver::run_compiler(&args, box StupidCalls::new(), None, None);
 }
