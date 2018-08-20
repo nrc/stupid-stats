@@ -13,9 +13,10 @@ extern crate getopts;
 extern crate rustc;
 extern crate rustc_driver;
 extern crate rustc_codegen_utils;
+extern crate rustc_metadata;
 extern crate syntax;
 
-use rustc::middle::cstore::CrateStore;
+use rustc_metadata::cstore::CStore;
 use rustc::session::Session;
 use rustc::session::config::{self, ErrorOutputType, Input};
 use rustc_driver::{driver, Compilation, CompilerCalls, RustcDefaultCalls};
@@ -65,7 +66,7 @@ impl<'a> CompilerCalls<'a> for StupidCalls {
         t: &CodegenBackend,
         m: &getopts::Matches,
         s: &Session,
-        c: &CrateStore,
+        c: &CStore,
         i: &Input,
         odir: &Option<PathBuf>,
         ofile: &Option<PathBuf>,
