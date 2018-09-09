@@ -230,8 +230,10 @@ impl<'a> visit::Visitor<'a> for StupidVisitor {
 }
 
 fn main() {
-    // Grab the command line arguments.
-    let args: Vec<_> = std::env::args().collect();
-    // Run the compiler. Yep, that's it.
-    rustc_driver::run_compiler(&args, box StupidCalls::new(), None, None);
+    rustc_driver::run(|| {
+        // Grab the command line arguments.
+        let args: Vec<_> = std::env::args().collect();
+        // Run the compiler. Yep, that's it.
+        rustc_driver::run_compiler(&args, box StupidCalls::new(), None, None)
+    });
 }
