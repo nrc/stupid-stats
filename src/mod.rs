@@ -7,6 +7,7 @@
 // except according to those terms.
 
 #![feature(box_syntax)]
+#![feature(extern_crate_item_prelude)]
 #![feature(rustc_private)]
 
 extern crate getopts;
