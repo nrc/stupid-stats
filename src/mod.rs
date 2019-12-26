@@ -17,6 +17,7 @@ extern crate rustc_codegen_utils;
 extern crate rustc_metadata;
 extern crate syntax;
 
+use rustc::session::Session;
 use rustc::session::config::{self, ErrorOutputType, Input};
 use rustc_driver::{Compilation, Callbacks, RustcDefaultCalls};
 use rustc_codegen_utils::codegen_backend::CodegenBackend;
@@ -24,13 +25,52 @@ use rustc_interface::{Config, Queries, interface::Compiler};
 
 
 use syntax::{ast, attr, visit};
+use syntax::edition::Edition;
 use syntax::source_map::FileLoader;
 use syntax::print::pprust::path_to_string;
 
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::fs;
 use std::io;
 use std::env;
+
+/// Build system-agnostic, basic compilation unit
+#[derive(PartialEq, Eq, Hash, Debug, Clone)]
+pub struct Crate {
+    pub name: String,
+    pub src_path: Option<PathBuf>,
+    pub edition: RustcEdition,
+    /// From rustc; mainly used to group other properties used to disambiguate a
+    /// given compilation unit.
+    pub disambiguator: (u64, u64),
+}
+
+// Temporary, until Edition from rustfmt is available
+#[derive(PartialEq, Eq, Hash, Debug, PartialOrd, Ord, Copy, Clone)]
+pub enum RustcEdition {
+    Edition2015,
+    Edition2018,
+}
+
+impl Default for RustcEdition {
+    fn default() -> RustcEdition {
+        RustcEdition::Edition2015
+    }
+}
+
+impl std::convert::TryFrom<&str> for RustcEdition {
+    type Error = &'static str;
+
+    fn try_from(val: &str) -> Result<Self, Self::Error> {
+        Ok(match val {
+            "2015" => RustcEdition::Edition2015,
+            "2018" => RustcEdition::Edition2018,
+            _ => return Err("unknown"),
+        })
+    }
+}
+
 // This is the highest level controller of compiler execution. We often want
 // some context to remember facts about compilation (e.g., the input file or
 // some processed flags), but for this simple example, we don't need anything.
@@ -55,7 +95,11 @@ impl StupidCalls {
 // do nothing and let compilation continue.
 impl Callbacks for StupidCalls {
     // first callback the compiler driver calls
-    fn config(&mut self, _config: &mut Config) { }
+    fn config(&mut self, config: &mut Config) {
+        // this prevents the compiler from dropping the expanded AST
+        // although it still works without it?
+        config.opts.debugging_opts.save_analysis = true;
+    }
 
     // next step once config has been read and all input parsed
     fn after_parsing<'tcx>(
@@ -69,8 +113,8 @@ impl Callbacks for StupidCalls {
     // after macro expansion
     fn after_expansion<'tcx>(
         &mut self,
-        _compiler: &Compiler,
-        _queries: &'tcx Queries<'tcx>
+        compiler: &Compiler,
+        queries: &'tcx Queries<'tcx>
     ) -> Compilation {
         Compilation::Continue
     }
@@ -194,79 +238,23 @@ impl<'a> visit::Visitor<'a> for StupidVisitor {
     // Note that I don't check methods for the number of arguments because I'm lazy.
 }
 
-// pub fn dylib_path_envvar() -> &'static str {
-//     if cfg!(windows) {
-//         "PATH"
-//     } else if cfg!(target_os = "macos") {
-//         "DYLD_FALLBACK_LIBRARY_PATH"
-//     } else {
-//         "LD_LIBRARY_PATH"
-//     }
-// }
-
-// pub fn dylib_path() -> Vec<PathBuf> {
-//     match env::var_os(dylib_path_envvar()) {
-//         Some(var) => env::split_paths(&var).collect(),
-//         None => Vec::new(),
-//     }
-// }
-
-// fn standard_lib() -> PathBuf {
-//     let sys_root = sys_root();
-//     println!("sys root {}",sys_root);
-//     let sysroot = PathBuf::from(sys_root.trim());
-//     let src_path = sysroot.join("lib").join("rustlib").join("src").join("rust");
-//     let lock = src_path.join("Cargo.lock");
-//     src_path
-// }
-
-// fn sys_root() -> String {
-//     use std::process::Command;
-//     let out = Command::new("rustc")
-//         .arg("--print")
-//         .arg("sysroot")
-//         .output()
-//         .expect("rustc --print sysroot failed");
-//         
-           // let src_path = "RUST_SRC_PATH";
-//         println!("VARS VARS {:#?}", std::env::vars_os().map(|(k, v)| format!("{:?}={:?}", k, v)).collect::<Vec<_>>());
-//     String::from_utf8_lossy(&out.stdout).into()
-// }
-
-// const ARGS: &[&str] = &[
-//     "",
-//     "./test_it/src/lib.rs",
-//     "--edition=2018",
-//     "--crate-name", "tester",
-//     // "build.rs",
-//     // "--json=diagnostic-rendered-ansi",
-//     "--crate-type", "bin",
-//     "--emit=dep-info,link",
-//     "-C", "debuginfo=2",
-//     "--cfg", "feature=\"default\"",
-//     // "-C", "metadata=1ab1652a47711491",
-//     // "-C", "extra-filename=-1ab1652a47711491",
-//     "--out-dir", "/home/devinr/aprog/rust/__forks__/stupid-stats/test_it/target/debug/build/",
-//     "-C", "incremental=/home/devinr/aprog/rust/__forks__/stupid-stats/test_it/target/debug/incremental",
-//     "-L", "dependency=/home/devinr/aprog/rust/__forks__/stupid-stats/test_it/target/debug/deps",
-//     "--extern", "rustc_tools_util=/home/devinr/aprog/rust/__forks__/stupid-stats/test_it/target/deps/librustc_tools_util-623d1a4939323e1f.rlib",
-//     "--error-format=json",
-//     "--sysroot"
-// ];
+/// Adds the correct --sysroot option.
+fn sys_root() -> Vec<String> {
+    let home = option_env!("RUSTUP_HOME");
+    let toolchain = option_env!("RUSTUP_TOOLCHAIN");
+    let sysroot = format!("{}/toolchains/{}", home.unwrap(), toolchain.unwrap());
+    vec!["--sysroot".into(), sysroot]
+}
 
 fn main() {
     let _ = rustc_driver::catch_fatal_errors(|| {
         // Grab the command line arguments.
         let args: Vec<_> = std::env::args_os().flat_map(|s| s.into_string()).collect();
-        let std_lib = standard_lib();
-        println!("{:?}", args);
-        println!("{:?}", std_lib);
+        let mut args2 = args.iter()
+            .map(|s| (*s).to_string())
+            .chain(sys_root().into_iter())
+            .collect::<Vec<_>>();
 
-        // let args = ARGS.iter()
-        //     .map(|s| s.to_string())
-        //     .chain(Some(sys_root()).into_iter())
-        //     .collect::<Vec<_>>();
-        // Run the compiler. Yep, that's it.
-        rustc_driver::run_compiler(&args, &mut StupidCalls::new(), None, None)
+        rustc_driver::run_compiler(&args2, &mut StupidCalls::new(), None, None)
     }).map_err(|e| println!("{:?}", e));
 }
