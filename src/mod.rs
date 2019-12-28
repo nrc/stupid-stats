@@ -9,67 +9,16 @@
 #![feature(box_syntax)]
 #![feature(rustc_private)]
 
-extern crate getopts;
-extern crate rustc;
 extern crate rustc_driver;
 extern crate rustc_interface;
-extern crate rustc_codegen_utils;
-extern crate rustc_metadata;
 extern crate syntax;
 
-use rustc::session::Session;
-use rustc::session::config::{self, ErrorOutputType, Input};
 use rustc_driver::{Compilation, Callbacks, RustcDefaultCalls};
-use rustc_codegen_utils::codegen_backend::CodegenBackend;
 use rustc_interface::{Config, Queries, interface::Compiler};
 
 
 use syntax::{ast, attr, visit};
-use syntax::edition::Edition;
-use syntax::source_map::FileLoader;
 use syntax::print::pprust::path_to_string;
-
-use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
-use std::fs;
-use std::io;
-use std::env;
-
-/// Build system-agnostic, basic compilation unit
-#[derive(PartialEq, Eq, Hash, Debug, Clone)]
-pub struct Crate {
-    pub name: String,
-    pub src_path: Option<PathBuf>,
-    pub edition: RustcEdition,
-    /// From rustc; mainly used to group other properties used to disambiguate a
-    /// given compilation unit.
-    pub disambiguator: (u64, u64),
-}
-
-// Temporary, until Edition from rustfmt is available
-#[derive(PartialEq, Eq, Hash, Debug, PartialOrd, Ord, Copy, Clone)]
-pub enum RustcEdition {
-    Edition2015,
-    Edition2018,
-}
-
-impl Default for RustcEdition {
-    fn default() -> RustcEdition {
-        RustcEdition::Edition2015
-    }
-}
-
-impl std::convert::TryFrom<&str> for RustcEdition {
-    type Error = &'static str;
-
-    fn try_from(val: &str) -> Result<Self, Self::Error> {
-        Ok(match val {
-            "2015" => RustcEdition::Edition2015,
-            "2018" => RustcEdition::Edition2018,
-            _ => return Err("unknown"),
-        })
-    }
-}
 
 // This is the highest level controller of compiler execution. We often want
 // some context to remember facts about compilation (e.g., the input file or
@@ -77,17 +26,7 @@ impl std::convert::TryFrom<&str> for RustcEdition {
 // We need to delegate to RustcDefaultCalls when we want to do what the rust
 // compiler would do in certain circumstances. We do this so that we can emit
 // some of the same info to Cargo.
-struct StupidCalls {
-    default_calls: RustcDefaultCalls,
-}
-
-impl StupidCalls {
-    fn new() -> StupidCalls {
-        StupidCalls {
-            default_calls: RustcDefaultCalls,
-        }
-    }
-}
+struct StupidCalls;
 
 // Callbacks is a trait for running code during compilation at the driver level. It
 // is basically a set of callbacks to call at various stages of compilation to
@@ -113,8 +52,8 @@ impl Callbacks for StupidCalls {
     // after macro expansion
     fn after_expansion<'tcx>(
         &mut self,
-        compiler: &Compiler,
-        queries: &'tcx Queries<'tcx>
+        _compiler: &Compiler,
+        _queries: &'tcx Queries<'tcx>
     ) -> Compilation {
         Compilation::Continue
     }
@@ -255,6 +194,6 @@ fn main() {
             .chain(sys_root().into_iter())
             .collect::<Vec<_>>();
 
-        rustc_driver::run_compiler(&args2, &mut StupidCalls::new(), None, None)
+        rustc_driver::run_compiler(&args2, &mut StupidCalls, None, None)
     }).map_err(|e| println!("{:?}", e));
 }
