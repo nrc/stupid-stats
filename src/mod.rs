@@ -6,19 +6,19 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-#![feature(box_syntax)]
 #![feature(rustc_private)]
 
 extern crate rustc_driver;
 extern crate rustc_interface;
-extern crate syntax;
+extern crate rustc_span;
+extern crate rustc_ast;
+extern crate rustc_ast_pretty;
+extern crate rustc_attr;
 
-use rustc_driver::{Compilation, Callbacks, RustcDefaultCalls};
+use rustc_driver::{Compilation, Callbacks};
 use rustc_interface::{Config, Queries, interface::Compiler};
-
-
-use syntax::{ast, attr, visit};
-use syntax::print::pprust::path_to_string;
+use rustc_ast::{ast, visit};
+use rustc_ast_pretty::pprust;
 
 // This is the highest level controller of compiler execution. We often want
 // some context to remember facts about compilation (e.g., the input file or
@@ -74,7 +74,7 @@ impl Callbacks for StupidCalls {
         let mut visitor = StupidVisitor::new();
         visit::walk_crate(&mut visitor, &krate);
         // And finally prints out the stupid stats that we collected.
-        let crate_name = match attr::find_crate_name(&krate.attrs) {
+        let crate_name = match rustc_attr::find_crate_name(&krate.attrs) {
             Some(name) => name.to_string(),
             None => String::from("unknown_crate"),
         };
@@ -154,7 +154,7 @@ impl StupidVisitor {
 impl<'a> visit::Visitor<'a> for StupidVisitor {
     // We found an item, could be a function.
     fn visit_item(&mut self, i: &ast::Item) {
-        if let ast::ItemKind::Fn(ref decl, _, _) = i.kind {
+        if let ast::ItemKind::Fn(_, ref decl, _, _) = i.kind {
             // record the number of args
             self.increment_args(decl.decl.inputs.len());
         }
@@ -163,10 +163,10 @@ impl<'a> visit::Visitor<'a> for StupidVisitor {
     }
 
     // We found a macro.
-    fn visit_mac(&mut self, mac: &ast::Mac) {
+    fn visit_mac(&mut self, mac: &ast::MacCall) {
         // Find its name and check if it is "println".
         let path = &mac.path;
-        if path_to_string(path) == "println" {
+        if pprust::path_to_string(path) == "println" {
             self.println_count += 1;
         }
 
@@ -189,7 +189,7 @@ fn main() {
     let _ = rustc_driver::catch_fatal_errors(|| {
         // Grab the command line arguments.
         let args: Vec<_> = std::env::args_os().flat_map(|s| s.into_string()).collect();
-        let mut args2 = args.iter()
+        let args2 = args.iter()
             .map(|s| (*s).to_string())
             .chain(sys_root().into_iter())
             .collect::<Vec<_>>();
