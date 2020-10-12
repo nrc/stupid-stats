@@ -61,14 +61,14 @@ impl Callbacks for StupidCalls {
     // This is a hook to allow us to supply a callback called after analysis.
     // We are given access to the compiler and the various queries run by the compiler
     // as `Compiler` and `Queries` respectively. The `after_analysis` stage of the
-    // compiler gives us access to a fully compiled crate with all meta data. 
+    // compiler gives us access to a fully compiled crate with all meta data.
     fn after_analysis<'tcx>(
         &mut self,
         _compiler: &Compiler,
         queries: &'tcx Queries<'tcx>,
     ) -> Compilation {
         // `Queries::parse` gives us access to a `Result<Query<Crate>>` which is exactly what
-        // our ast `Visitor` needs. 
+        // our ast `Visitor` needs.
         let krate = queries.parse().expect("no Result<Query<Crate>> found").take();
         // ...and walks the AST, collecting stats.
         let mut visitor = StupidVisitor::new();
@@ -91,7 +91,7 @@ impl Callbacks for StupidCalls {
             four_percent
         );
 
-        Compilation::Stop
+        Compilation::Continue
     }
 }
 
